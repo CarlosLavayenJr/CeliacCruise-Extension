@@ -1,162 +1,84 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { ReactSVGPanZoom, TOOL_AUTO, Value } from "react-svg-pan-zoom";
+import React, { useState, useEffect } from 'react';
 
-const FloorPlan: React.FC = () => {
-    const ViewerRef = useRef<any>(null);
-    const [value, setValue] = useState<Value | null>(null);
-    const [tool, setTool] = useState(TOOL_AUTO);
-    const [svgContent, setSvgContent] = useState<string | null>(null);
-    
-    const dimensions = useMemo(() => ({
-        width: 1170,
-        height: 612,
-        // Add padding to adjust for SVG whitespace
-        paddingLeft: 0,   // Adjust this value to fix left overflow
-        paddingTop: 0,    // Adjust this value to fix top overflow
-        paddingRight: 0,   // Add if needed
-        paddingBottom: 0   // Add if needed
-    }), []);
+const DeckViewer = () => {
+  const [currentDeckIndex, setCurrentDeckIndex] = useState(0);
+  const [svgContent, setSvgContent] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-    const panZoomOptions = useMemo(() => ({
-        // Focus zoom options
-        setPointOnViewerCenter: false,
-        focusOnMousePosition: true,
-        scaleFactorOnWheel: 1.1,
+  const VIEWPORT_HEIGHT = 200;
+  const VIEWPORT_WIDTH = 800;
 
-        // Core options
-        background: '#fff',
-        detectWheel: true,
-        detectAutoPan: true,  // Changed to true to enable proper pan detection
-        preventPanOutside: true,
-        scaleFactorMax: 1.69,
-        scaleFactorMin: 1.0,
-        
-        // Disable unused features for performance
-        disableDoubleClickZoom: true,
-        customMiniature: () => null,
-        miniatureProps: { position: 'none' },
+  const decks = [
+    { name: 'Sun', floor: '4th floor', file: '/Sun_deck.svg' },
+    { name: 'Violin', floor: '3rd floor', file: '/Violin_deck.svg' },
+    { name: 'Cello', floor: '2nd floor', file: '/Cello_deck.svg' },
+    { name: 'Piano', floor: '1st floor', file: '/Piano_deck.svg' }
+  ];
 
-        // Add padding to prevent hard stops at edges
-        padding: 0
-    }), []);
+  useEffect(() => {
+    const loadSVG = async () => {
+      setIsLoading(true);
+      setSvgContent('');
+      
+      try {
+        const response = await fetch(decks[currentDeckIndex].file);
+        const svgText = await response.text();
+        setSvgContent(svgText);
+      } catch (error) {
+        console.error('Error loading SVG:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    useEffect(() => {
-        let mounted = true;
-        
-        const fetchSVG = async () => {
-            try {
-                const response = await fetch("/deck-plan.svg");
-                const data = await response.text();
-                
-                if (mounted) {
-                    const cleanedSvg = data
-                        .replace(/<\?xml.*?\?>|<!DOCTYPE[^>]*>/g, "")
-                        .replace(/<!--.*?-->/g, "")
-                        .replace(/\s+/g, " ")
-                        .replace(/>\s+</g, "><")
-                        .trim();
-                    
-                    setSvgContent(cleanedSvg);
-                }
-            } catch (error) {
-                console.error("Error loading SVG:", error);
-            }
-        };
+    loadSVG();
+  }, [currentDeckIndex]);
 
-        fetchSVG();
-        
-        return () => {
-            mounted = false;
-        };
-    }, []);
+  return (
+    <div className="flex gap-6">
+      {/* Vertical deck selector */}
+      <div className="w-48 bg-gradient-to-b from-teal-500 to-blue-900 rounded-lg p-4 shadow-lg">
+        {decks.map((deck, index) => (
+          <button
+            key={index}
+            onClick={() => setCurrentDeckIndex(index)}
+            className={`w-full text-left px-4 py-3 rounded-md transition-colors mb-1 ${
+              currentDeckIndex === index 
+                ? 'bg-blue-500 text-white' 
+                : 'text-white hover:bg-blue-600/50'
+            }`}
+          >
+            <div className="text-sm font-medium">
+              {deck.name} Deck ({deck.floor})
+            </div>
+          </button>
+        ))}
+      </div>
 
-    useEffect(() => {
-        if (!value) {
-            // Initialize with proper boundaries
-            setValue({
-                version: 3,
-                mode: "idle",
-                focus: false,
-                a: 1,  // scale X
-                b: 0,  // skew X
-                c: 0,  // skew Y
-                d: 1,  // scale Y
-                e: 0,  // translate X
-                f: 0,  // translate Y
-                viewerWidth: dimensions.width,
-                viewerHeight: dimensions.height,
-                SVGWidth: dimensions.width,
-                SVGHeight: dimensions.height,
-                startX: 0,
-                startY: 0,
-                endX: dimensions.width,
-                endY: dimensions.height,
-                maxX: dimensions.width,  // Set maximum X boundary
-                maxY: dimensions.height,  // Set maximum Y boundary
-                minX: 0,  // Set minimum X boundary
-                minY: 0,  // Set minimum Y boundary
-            });
-        }
-    }, [value, dimensions]);
-
-    // Enhanced change handler with boundary enforcement
-    const handleChangeValue = useMemo(() => (newValue: Value) => {
-        if (isNaN(newValue.e) || isNaN(newValue.f)) return;
-        
-        // Enforce zoom limits
-        if (newValue.a > 1.69 || newValue.a < 1.0) return;
-        
-        // Calculate boundaries based on current zoom level
-        const currentZoom = newValue.a;
-        // Adjust pan limits based on padding
-        const maxPanX = (dimensions.width * (currentZoom - 1)) - dimensions.paddingLeft - dimensions.paddingRight;
-        const maxPanY = (dimensions.height * (currentZoom - 1)) - dimensions.paddingTop - dimensions.paddingBottom;
-        
-        // Clamp translation values within bounds
-        const clampedValue = {
-            ...newValue,
-            e: Math.max(Math.min(newValue.e, maxPanX), -maxPanX),
-            f: Math.max(Math.min(newValue.f, maxPanY), -maxPanY)
-        };
-        
-        setValue(clampedValue);
-    }, [dimensions]);
-
-    if (!svgContent || !value) {
-        return <div className="flex justify-center mt-10">Loading floor plan...</div>;
-    }
-
-    return (
-        <div className="flex justify-center mt-10">
-            <ReactSVGPanZoom
-                ref={ViewerRef}
-                width={dimensions.width}
-                height={dimensions.height}
-                tool={tool}
-                value={value}
-                onChangeValue={handleChangeValue}
-                onChangeTool={setTool}
-                {...panZoomOptions}
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width={dimensions.width}
-                    height={dimensions.height}
-                    viewBox="900 450 600 300"  // Adjust these values to crop the whitespace
-                >
-                    <g 
-                        dangerouslySetInnerHTML={{ __html: svgContent }}
-                        style={{
-                            willChange: 'transform',
-                            transform: 'translateZ(0)'
-                        }}
-                    />
-                </svg>
-            </ReactSVGPanZoom>
+      {/* SVG viewer */}
+      <div className="flex-1">
+        <div className="relative bg-white border-2 border-gray-200 rounded-lg overflow-hidden"
+             style={{ 
+               height: `${VIEWPORT_HEIGHT}px`,
+               maxWidth: `${VIEWPORT_WIDTH}px`,
+               margin: '0 auto'
+             }}>
+          {isLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+          ) : (
+            <div className="w-full h-full overflow-x-auto overflow-y-hidden">
+              <div className="h-full"
+                   dangerouslySetInnerHTML={{ __html: svgContent }} />
+            </div>
+          )}
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
-export default FloorPlan;
+export default DeckViewer;
